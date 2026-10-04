@@ -1,4 +1,5 @@
-from random import randint, seed
+from random import randint
+
 
 def crear_mochila(n):
     nombre="mochila"+str(n)+".txt"
@@ -10,7 +11,8 @@ def crear_mochila(n):
         benef=randint(1,1000);
         arch.write(str(peso)+","+str(benef)+"\n")
     arch.close()
-    
+
+
 crear_mochila(1000)
 
 # Esta función crea una mochila con una lista del tamaño indicado como parámetro
@@ -21,19 +23,6 @@ crear_mochila(1000)
 # Se genera un archivo cuya primera línea es la capacidad de la mochila
 # Las líneas siguientes son pares ordenados (peso, beneficio) de cada elemento.
 
-
-def generar_instancia(n_elementos, capacidad_proporcion=0.5, peso_min=1, peso_max=50, valor_min=10, valor_max=100, seed=None):
-    """
-    Genera pesos, valores y capacidad para el problema de la mochila 0/1.
-    """
-    if seed is not None:
-        globals()['seed'](seed)
-    
-    pesos = [randint(peso_min, peso_max) for _ in range(n_elementos)]
-    valores = [randint(valor_min, valor_max) for _ in range(n_elementos)]
-    capacidad = int(sum(pesos) * capacidad_proporcion)
-    
-    return pesos, valores, capacidad
 
 def reed(archivo):
     texto = open(archivo,"r")
@@ -47,6 +36,63 @@ def reed(archivo):
     texto.close()
     return objetos, capacidad
 
+
+# =============================================================================
+# PROBLEMA 1: FUERZA BRUTA
+# ==============================================================================
+def mochila_fuerza_bruta(objetos, capacidad):
+    n = len(objetos)
+
+    def resolver(indice, peso_actual, beneficio_actual):
+        if indice == n:
+            if peso_actual <= capacidad:
+                return beneficio_actual
+            return 0
+        beneficio_sin = resolver(indice + 1, peso_actual, beneficio_actual)
+        beneficio_con = resolver(
+            indice + 1,
+            peso_actual + objetos[indice][0],
+            beneficio_actual + objetos[indice][1],
+        )
+
+        return max(beneficio_sin, beneficio_con)
+
+    return resolver(0, 0, 0)
+
+
+# ==============================================================================
+# PROBLEMA 1: BACKTRACKING (PODA POR FACTIBILIDAD Y COTA SUPERIOR)
+# =============================================================================
+def mochila_backtracking(objetos, capacidad):
+
+    n = len(objetos)
+
+    sufijo_beneficios = [0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        sufijo_beneficios[i] = sufijo_beneficios[i + 1] + objetos[i][1]
+    mejor_beneficio = 0
+    def resolver(indice, peso_actual, beneficio_actual):
+        nonlocal mejor_beneficio
+        if beneficio_actual > mejor_beneficio:
+            mejor_beneficio = beneficio_actual
+        if indice == n:
+            return
+        if beneficio_actual + sufijo_beneficios[indice] <= mejor_beneficio:
+            return
+        peso_item, benef_item = objetos[indice]
+        if peso_actual + peso_item <= capacidad:
+            resolver(
+                indice + 1, peso_actual + peso_item, beneficio_actual + benef_item
+            )
+        resolver(indice + 1, peso_actual, beneficio_actual)
+
+    resolver(0, 0, 0)
+    return mejor_beneficio
+
+
+# ============================================================================
+# PROBLEMA 2: GREEDY
+# ==============================================================================
 def greedy(objetos, capacidad):
     result = []
     peso_contador = 0
@@ -75,9 +121,6 @@ def greedy(objetos, capacidad):
 
     return result
 
-if __name__ == "__main__":
-    p, v, c = generar_instancia(10, seed=42)
-    print("Capacidad:", c)
-    print("Pesos:", p)
-    print("Valores:", v)
 
+objetos, capacidad = reed("mochila1000.txt")
+solucion = greedy(objetos, capacidad)
