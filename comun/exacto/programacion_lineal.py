@@ -14,14 +14,17 @@ LP continuo es, ademas, el que tiene solucion cerrada O(n log n) (ordenar por
 beneficio/peso y llenar) que hay que mostrar en el pseudocodigo del informe.
 
 DOS APIS DE PULP
-El TP1 usaba `pulp.LpVariable.dicts(...)` y `pulp.PULP_CBC_CMD(...)`, que son
-la API de PuLP 2 y 3. PuLP 4 es una reescritura con nucleo en Rust y rompio las
-dos: las variables se crean con `problema.add_variable_dicts(...)` y el solver
-es `pulp.HiGHS()`. El codigo de aca detecta la version y usa la API disponible,
-asi funciona con la que tenga el corrector sin tocar nada:
+El TP1 usaba `pulp.LpVariable.dicts(...)` y `pulp.PULP_CBC_CMD(...)`. PuLP 4 es
+una reescritura con nucleo en Rust: se lleva puestas esas dos y ademas NO trae
+ningun solver, hay que instalarle un backend (`highspy`). PuLP 3.3 si trae CBC
+adentro y ya acepta `add_variable_dicts`, asi que la unica diferencia que
+importa es el solver, y es lo que se detecta aca:
 
-    3.1.1  (venv del repo)     add_variable_dicts + HiGHS
-    2.x / 3.x                  LpVariable.dicts   + CBC
+    PuLP <= 3   PULP_CBC_CMD (CBC incluido en el paquete)
+    PuLP >= 4   HiGHS (necesita highspy instalado aparte)
+
+`add_variable_dicts` se usa cuando existe (3.3 y 4) y si no `LpVariable.dicts`
+(2.x). Asi corre con la version que tenga el corrector sin tocar nada.
 
 PuLP se importa dentro de las funciones a proposito: `comun` tiene que poder
 importarse sin PuLP instalado, porque las ramas de P2 y P3 no lo usan. Si falta:
@@ -52,31 +55,46 @@ def _exigir_pulp():
 
 def _api(pulp):
     """Devuelve (crear_variables, resolver) para la version de PuLP instalada."""
-    if hasattr(pulp.LpProblem, "add_variable_dicts"):  # PuLP >= 4
+    if hasattr(pulp.LpProblem, "add_variable_dicts"):  # PuLP >= 3.3
 
-        def crear(problema, cantidad, categoria):
-            return problema.add_variable_dicts("x", range(cantidad), cat=categoria)
+        def crear(problema, cantidad, categoria, **cotas):
+            return problema.add_variable_dicts(
+                "x", range(cantidad), cat=categoria, **cotas
+            )
+
+    else:  # PuLP 2.x
+
+        def crear(problema, cantidad, categoria, **cotas):
+            return pulp.LpVariable.dicts("x", range(cantidad), cat=categoria, **cotas)
+
+    # La deteccion que importa es el solver: PuLP <= 3 trae CBC, PuLP 4 no trae
+    # ninguno y delega en un backend externo.
+    if hasattr(pulp, "PULP_CBC_CMD"):
+
+        def resolver(problema):
+            problema.solve(pulp.PULP_CBC_CMD(msg=0))
+
+    else:
 
         def resolver(problema):
             problema.solve(pulp.HiGHS(msg=False))
-
-        return crear, resolver
-
-    def crear(problema, cantidad, categoria):  # PuLP 2 / 3
-        return pulp.LpVariable.dicts("x", range(cantidad), cat=categoria)
-
-    def resolver(problema):
-        problema.solve(pulp.PULP_CBC_CMD(msg=0))
 
     return crear, resolver
 
 
 def _modelo(inst, categoria: str):
-    """Modelo de mochila 0/1 con variables de la categoria pedida."""
+    """Modelo de mochila 0/1 con variables de la categoria pedida.
+
+    Para la relajacion las variables continuas llevan `0 <= x <= 1`. Sin el tope
+    superior no se relaja el 0/1: se resuelve otro problema, donde cada x_i puede
+    crecer hasta agotar la capacidad y el "valor" da varias veces el optimo. Con
+    `Binary` las cotas ya vienen implicitas.
+    """
     pulp = _exigir_pulp()
     crear, resolver = _api(pulp)
     problema = pulp.LpProblem("mochila", pulp.LpMaximize)
-    x = crear(problema, inst.n, categoria)
+    cotas = {"lowBound": 0, "upBound": 1} if categoria == "Continuous" else {}
+    x = crear(problema, inst.n, categoria, **cotas)
     problema += pulp.lpSum(inst.beneficios[i] * x[i] for i in range(inst.n))
     problema += pulp.lpSum(inst.pesos[i] * x[i] for i in range(inst.n)) <= inst.capacidad
     return pulp, problema, x, resolver
@@ -115,6 +133,11 @@ def relajacion(inst) -> float:
 
     La cota entera que se compara en P1 es `math.floor` de este valor, no el
     valor crudo: los beneficios son enteros, asi que el optimo es entero.
+
+    Propiedad util para verificar: la relajacion solo se diferencia del optimo
+    en el elemento critico, que queda fraccionario, asi que
+    `z_lp - z_optimo <= max(beneficios)`. Si la brecha es mayor, el modelo esta
+    mal armado (por ejemplo, sin el tope x <= 1).
     """
     pulp, problema, _x, resolver_modelo = _modelo(inst, "Continuous")
     resolver_modelo(problema)
