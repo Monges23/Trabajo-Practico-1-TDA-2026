@@ -1,0 +1,26 @@
+# TP2 -- dependencias
+#
+# `comun` se importa sin nada instalado: cada linea de aca la necesita un modulo
+# concreto. Instalacion:
+#
+#     uv venv .venv && uv pip install -r requirements.txt
+#     (o)  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# Verificado con Python 3.15.2; el TP1 se corrio con 3.12 y no se usa nada
+# exclusivo de ninguna de las dos.
+
+# P1 y P4 (programacion lineal). OJO con la version: PuLP 4 es una reescritura
+# que NO incluye ningun solver, asi que `pip install pulp` solo deja
+# `listSolvers(onlyAvailable=True) == []` y el modelo falla con
+# "HiGHS: Not Available: No module named 'highspy'". PuLP 3 trae el binario de
+# CBC adentro y funciona sin instalar nada mas. Por eso el tope en <4: es la
+# unica version que corre con un solo paquete.
+#
+# Si se quiere PuLP 4, agregar el backend:  pulp>=4 + highspy
+# El codigo de comun/exacto/programacion_lineal.py detecta la version y usa la
+# API disponible, asi que sirven las dos.
+pulp>=2.8,<4
+
+# Graficos de tiempos y curvas de ajuste (P1, P2, P3, P4).
+matplotlib>=3.8
+numpy>=1.26
