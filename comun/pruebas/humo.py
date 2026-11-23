@@ -76,6 +76,18 @@ def main() -> int:
             math.floor(cota) >= optimo,
             f"floor(relajacion) = {math.floor(cota)} es cota entera valida",
         )
+        # Cota ajustada: la relajacion solo difiere del optimo en el elemento
+        # critico fraccionario, asi que la brecha no puede superar el beneficio
+        # mas grande. Sin esta verificacion, una relajacion sin x <= 1 daba
+        # 35247 contra un optimo de 5593 y "pasaba" por ser >= optimo.
+        check(
+            cota - optimo <= max(inst.beneficios) + 1e-6,
+            f"brecha de relajacion {cota - optimo:.2f} <= max beneficio {max(inst.beneficios)}",
+        )
+        check(
+            cota <= inst.beneficio_total() + 1e-6,
+            f"relajacion {cota:.2f} <= suma de beneficios {inst.beneficio_total()}",
+        )
     except ModuleNotFoundError as exc:
         print(f"  omite  {exc}")
 

@@ -65,10 +65,18 @@ class Instancia:
         """Beneficio total de una seleccion de indices."""
         return sum(self.beneficios[i] for i in seleccion)
 
+    def peso_total(self) -> int:
+        """Peso si se tomaran todos los elementos."""
+        return sum(self.pesos)
+
+    def beneficio_total(self) -> int:
+        """Beneficio de tomar todos los elementos: techo trivial de cualquier solucion."""
+        return sum(self.beneficios)
+
     def descripcion(self) -> str:
         return (
             f"{self.nombre or '<sin nombre>'}: n={self.n} W={self.capacidad} "
-            f"peso_total={sum(self.pesos)} beneficio_total={sum(self.beneficios)}"
+            f"peso_total={self.peso_total()} beneficio_total={self.beneficio_total()}"
         )
 
 
