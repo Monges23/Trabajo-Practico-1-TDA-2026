@@ -34,13 +34,14 @@ importarse sin PuLP instalado, porque las ramas de P2 y P3 no lo usan. Si falta:
 Aviso para P4: el TP1 medía el armado del modelo y el solver por separado
 porque el armado, en Python, es overhead que no es del algoritmo. Aca
 `resolver_con_tiempos` conserva esa distincion.
+
+Contrato de datos (el de `comun/parser_mochila.py`): `elems[i]` es el par
+`(peso, beneficio)`, `n` la cantidad de elementos y `w` la capacidad.
 """
 
 from __future__ import annotations
 
 import time
-
-from ..solucion import Solucion
 
 
 def _exigir_pulp():
@@ -82,7 +83,7 @@ def _api(pulp):
     return crear, resolver
 
 
-def _modelo(inst, categoria: str):
+def _modelo(elems, n: int, w: int, categoria: str):
     """Modelo de mochila 0/1 con variables de la categoria pedida.
 
     Para la relajacion las variables continuas llevan `0 <= x <= 1`. Sin el tope
@@ -94,9 +95,9 @@ def _modelo(inst, categoria: str):
     crear, resolver = _api(pulp)
     problema = pulp.LpProblem("mochila", pulp.LpMaximize)
     cotas = {"lowBound": 0, "upBound": 1} if categoria == "Continuous" else {}
-    x = crear(problema, inst.n, categoria, **cotas)
-    problema += pulp.lpSum(inst.beneficios[i] * x[i] for i in range(inst.n))
-    problema += pulp.lpSum(inst.pesos[i] * x[i] for i in range(inst.n)) <= inst.capacidad
+    x = crear(problema, n, categoria, **cotas)
+    problema += pulp.lpSum(elems[i][1] * x[i] for i in range(n))
+    problema += pulp.lpSum(elems[i][0] * x[i] for i in range(n)) <= w
     return pulp, problema, x, resolver
 
 
@@ -104,31 +105,35 @@ def _seleccion(x, n: int) -> list[int]:
     return [i for i in range(n) if (x[i].value() or 0) > 0.5]
 
 
-def resolver_con_tiempos(inst) -> tuple[Solucion, float, float]:
-    """Optimo entero. Devuelve (solucion, t_armado_modelo, t_solver)."""
+def _beneficio(elems, seleccion) -> int:
+    return sum(elems[i][1] for i in seleccion)
+
+
+def resolver_con_tiempos(elems, n: int, w: int) -> tuple[tuple[int, list[int]], float, float]:
+    """Optimo entero. Devuelve ((valor, seleccion), t_armado_modelo, t_solver)."""
     inicio = time.perf_counter()
-    pulp, problema, x, resolver = _modelo(inst, "Binary")
+    pulp, problema, x, resolver_modelo = _modelo(elems, n, w, "Binary")
     t_modelo = time.perf_counter() - inicio
     inicio = time.perf_counter()
-    resolver(problema)
-    t_solver = time.perf_counter() - inicio
-    seleccion = _seleccion(x, inst.n)
-    return Solucion(valor=inst.beneficio_de(seleccion), seleccion=seleccion), t_modelo, t_solver
-
-
-def resolver(inst, traza: list[str] | None = None) -> Solucion:
-    """Optimo exacto del 0/1 por programacion lineal entera."""
-    _pulp, problema, x, resolver_modelo = _modelo(inst, "Binary")
     resolver_modelo(problema)
-    seleccion = _seleccion(x, inst.n)
+    t_solver = time.perf_counter() - inicio
+    seleccion = _seleccion(x, n)
+    return (_beneficio(elems, seleccion), seleccion), t_modelo, t_solver
+
+
+def resolver(elems, n: int, w: int, traza: list[str] | None = None) -> tuple[int, list[int]]:
+    """Optimo exacto del 0/1 por programacion lineal entera."""
+    _pulp, problema, x, resolver_modelo = _modelo(elems, n, w, "Binary")
+    resolver_modelo(problema)
+    seleccion = _seleccion(x, n)
     if traza is not None:
         traza.append(
-            f"modelo: {inst.n} variables binarias, 1 restriccion de capacidad W={inst.capacidad}"
+            f"modelo: {n} variables binarias, 1 restriccion de capacidad W={w}"
         )
-    return Solucion(valor=inst.beneficio_de(seleccion), seleccion=seleccion, traza=traza)
+    return _beneficio(elems, seleccion), seleccion
 
 
-def relajacion(inst) -> float:
+def relajacion(elems, n: int, w: int) -> float:
     """Valor de la relajacion lineal (cota superior, normalmente fraccionaria).
 
     La cota entera que se compara en P1 es `math.floor` de este valor, no el
@@ -139,6 +144,6 @@ def relajacion(inst) -> float:
     `z_lp - z_optimo <= max(beneficios)`. Si la brecha es mayor, el modelo esta
     mal armado (por ejemplo, sin el tope x <= 1).
     """
-    pulp, problema, _x, resolver_modelo = _modelo(inst, "Continuous")
+    pulp, problema, _x, resolver_modelo = _modelo(elems, n, w, "Continuous")
     resolver_modelo(problema)
     return float(pulp.value(problema.objective))

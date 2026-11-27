@@ -22,25 +22,29 @@ Diferencias deliberadas con el TP1 (dos, ambas corregidas aca):
    cual la segunda medicion del mismo algoritmo recibia la lista ya ordenada y
    el tiempo medido no era comparable. Aca se ordena una lista de indices.
 2. Aquel devolvia el elemento critico aunque no entrara solo en la mochila: si
-   `peso_critico > W`, la solucion resultante era infactible. No se disparaba
-   con los sets del TP1 (W = n*50 contra pesos <= 200) pero si con cualquier
+   `peso_critico > w`, la solucion resultante era infactible. No se disparaba
+   con los sets del TP1 (w = n*50 contra pesos <= 200) pero si con cualquier
    instancia donde un elemento pese mas que la capacidad. Aca ese candidato
    solo se considera si entra.
 
 Garantia: si `z*` es el optimo y `z_lp` la cota de relajacion lineal,
-`valor >= z_lp - p_critico` y `valor >= z*/2`.
+`valor >= z_lp - peso_critico` y `valor >= z*/2`.
+
+Contrato de datos (el de `comun/parser_mochila.py`): `elems[i]` es el par
+`(peso, beneficio)`, `n` la cantidad de elementos y `w` la capacidad.
 """
 
 from __future__ import annotations
 
-from .solucion import Solucion
 
+def greedy(elems, n: int, w: int, traza: list[str] | None = None) -> tuple[int, list[int]]:
+    """Aproximacion por prefijo greedy + elemento critico.
 
-def greedy(inst, traza: list[str] | None = None) -> Solucion:
-    """Aproximacion por prefijo greedy + elemento critico."""
+    Devuelve `(valor, seleccion)`, con `seleccion` ordenada por indice.
+    """
     orden = sorted(
-        range(inst.n),
-        key=lambda i: inst.beneficios[i] / inst.pesos[i],
+        range(n),
+        key=lambda i: elems[i][1] / elems[i][0],
         reverse=True,
     )
 
@@ -50,45 +54,40 @@ def greedy(inst, traza: list[str] | None = None) -> Solucion:
     critico: int | None = None
 
     for i in orden:
-        if peso_contador + inst.pesos[i] <= inst.capacidad:
-            peso_contador += inst.pesos[i]
-            beneficio_total += inst.beneficios[i]
+        peso, beneficio = elems[i]
+        if peso_contador + peso <= w:
+            peso_contador += peso
+            beneficio_total += beneficio
             seleccion.append(i)
             if traza is not None:
                 traza.append(
-                    f"toma {i} (p={inst.pesos[i]} b={inst.beneficios[i]}) "
-                    f"-> peso {peso_contador}/{inst.capacidad} beneficio {beneficio_total}"
+                    f"toma {i} (p={peso} b={beneficio}) "
+                    f"-> peso {peso_contador}/{w} beneficio {beneficio_total}"
                 )
         else:
             critico = i
             if traza is not None:
                 traza.append(
-                    f"critico {i} (p={inst.pesos[i]} b={inst.beneficios[i]}) "
-                    f"no entra: queda {inst.capacidad - peso_contador} de capacidad"
+                    f"critico {i} (p={peso} b={beneficio}) "
+                    f"no entra: queda {w - peso_contador} de capacidad"
                 )
             break
 
-    if (
-        critico is not None
-        and inst.pesos[critico] <= inst.capacidad
-        and inst.beneficios[critico] > beneficio_total
-    ):
-        seleccion = [critico]
-        beneficio_total = inst.beneficios[critico]
-        if traza is not None:
+    if critico is not None:
+        peso_critico, beneficio_critico = elems[critico]
+        if peso_critico <= w and beneficio_critico > beneficio_total:
+            seleccion = [critico]
+            beneficio_total = beneficio_critico
+            if traza is not None:
+                traza.append(
+                    f"el critico solo ({beneficio_total}) supera al prefijo "
+                    f"-> se devuelve [elemento critico]"
+                )
+        elif traza is not None:
             traza.append(
-                f"el critico solo ({beneficio_total}) supera al prefijo "
-                f"-> se devuelve [elemento critico]"
+                f"el prefijo ({beneficio_total}) supera al critico solo "
+                f"-> se devuelve el prefijo de {len(seleccion)} elementos"
             )
-    elif traza is not None and critico is not None:
-        traza.append(
-            f"el prefijo ({beneficio_total}) supera al critico solo "
-            f"-> se devuelve el prefijo de {len(seleccion)} elementos"
-        )
 
     seleccion.sort()
-    return Solucion(valor=beneficio_total, seleccion=seleccion, traza=traza)
-
-
-# Alias explicito para P1: el algoritmo que la catedra llama "Sahni (1975)".
-sahni = greedy
+    return beneficio_total, seleccion
